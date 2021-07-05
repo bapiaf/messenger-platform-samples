@@ -22,9 +22,13 @@
 // Use dotenv to read .env vars into Node
 require('dotenv').config();
 
+const axios = require('axios');
+
 console.log(process.env.PORT);
 console.log(process.env.VERIFY_TOKEN);
 console.log(process.env.PAGE_ACCESS_TOKEN);
+console.log(process.env.DIABOLOCOM_DOMAIN);
+console.log(process.env.DIABOLOCOM_TOKEN);
 
 // Imports dependencies and set up http server
 const request = require('request'),
@@ -67,7 +71,7 @@ app.get('/webhook', (req, res) => {
   }
 });
 
-// Creates the endpoint for your webhook
+// Creates the endpoint for the webhook which FB Messenger will call.
 app.post('/webhook', (req, res) => {
   let body = req.body;
 
@@ -101,17 +105,61 @@ app.post('/webhook', (req, res) => {
 });
 
 // Handles messages events
-function handleMessage(senderPsid, receivedMessage) {
+async function handleMessage(senderPsid, receivedMessage) {
   let response;
+  let inboundEmail;
 
   // Checks if the message contains text
   if (receivedMessage.text) {
-    // Create the payload for a basic text message, which
-    // will be added to the body of your request to the Send API
-    response = {
-      text: `You sent the message: '${receivedMessage.text}'. Now send me an attachment!`,
-    };
-  } else if (receivedMessage.attachments) {
+    if (receivedMessage.quick_reply == null) {
+      // Create the payload for a basic text message, which
+      // will be added to the body of your request to the Send API
+      response = {
+        text: `You sent the message: '${receivedMessage.text}'. We have forwarded it to Diabolocom as an inbound email. Was that a good idea?`,
+        quick_replies: [
+          {
+            content_type: 'text',
+            title: 'You bet!',
+            payload: 'youBet',
+            image_url:
+              'https://s1.edi-static.fr/Img/LivreBlanc/Partner/490364/Logo/diabolocom-Logo.png',
+          },
+          {
+            content_type: 'text',
+            title: 'No!',
+            payload: 'no!',
+            image_url:
+              'https://us.123rf.com/450wm/aquir/aquir2002/aquir200207561/139846330-no-thanks-stamp-no-thanks-round-vintage-grunge-sign-no-thanks.jpg?ver=6',
+          },
+        ],
+      };
+      console.log(response);
+
+      inboundEmail = {
+        from: `'${senderPsid}@facebook.com'`,
+        body: receivedMessage.text,
+        subject: `FB Messenger from: `,
+        to: 'edmee.marazel+ux@diabolocom.com',
+      };
+      console.log(inboundEmail);
+    } else {
+      let payload = receivedMessage.quick_reply.payload;
+
+      if (payload == 'youBet') {
+        response = {
+          text: `Great! Now try sending us an attachment`,
+        };
+      }
+
+      if (payload == 'no!') {
+        response = {
+          text: `Sorry about that.`,
+        };
+      }
+    }
+  }
+
+  if (receivedMessage.attachments) {
     // Get the URL of the message attachment
     let attachmentUrl = receivedMessage.attachments[0].payload.url;
     response = {
@@ -143,6 +191,33 @@ function handleMessage(senderPsid, receivedMessage) {
     };
   }
 
+  try {
+    // get the sender's profile
+    console.log('got a profile for the sender');
+    const profile = await getUserProfile(senderPsid);
+    console.log(profile);
+
+    // Forward to Diabolocom as inbound email
+    console.log('there is an email to send');
+    if (inboundEmail) {
+      inboundEmail.body =
+        inboundEmail.body +
+        ' this was sent by: ' +
+        profile.first_name +
+        ' ' +
+        profile.last_name +
+        ' ' +
+        profile.profile_pic;
+      inboundEmail.subject =
+        inboundEmail.subject + profile.first_name + ' ' + profile.last_name;
+      const sentInboundEmail = await sendInboundEmail(inboundEmail);
+      console.log(sentInboundEmail);
+    }
+  } catch (err) {
+    console.log('Couille in the potage');
+    console.log(err);
+  }
+
   // Send the response message
   callSendAPI(senderPsid, response);
 }
@@ -164,7 +239,7 @@ function handlePostback(senderPsid, receivedPostback) {
   callSendAPI(senderPsid, response);
 }
 
-// Sends response messages via the Send API
+// Sends response messages via the FB Messenger Send API
 function callSendAPI(senderPsid, response) {
   // The page access token we have generated in your app settings
   const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
@@ -180,7 +255,7 @@ function callSendAPI(senderPsid, response) {
   // Send the HTTP request to the Messenger Platform
   request(
     {
-      uri: 'https://graph.facebook.com/v2.6/me/messages',
+      uri: 'https://graph.facebook.com/v11.0/me/messages',
       qs: { access_token: PAGE_ACCESS_TOKEN },
       method: 'POST',
       json: requestBody,
@@ -193,6 +268,68 @@ function callSendAPI(senderPsid, response) {
       }
     }
   );
+}
+
+// Send inbound email via the Diabolocom API
+async function sendInboundEmail(inboundEmail) {
+  console.log('preparing inbound email API request');
+
+  //instanciate Diabolocom API request
+
+  const diabolocomDomain = process.env.DIABOLOCOM_DOMAIN;
+  const diabolocomToken = process.env.DIABOLOCOM_TOKEN;
+
+  const diabolocom = axios.create({
+    baseURL: diabolocomDomain + '/api/v1',
+    timeout: 20000,
+    headers: {
+      'Content-Type': 'application/json',
+      //Accept: 'application/json',
+      'Private-Token': diabolocomToken,
+    },
+  });
+
+  try {
+    const response = await diabolocom.post('/email/inboundemail', inboundEmail);
+    console.log(response.data);
+    return response.data;
+  } catch (err) {
+    console.log('Damn');
+    console.log(err);
+  }
+}
+
+// Send inbound email via the Diabolocom API
+async function getUserProfile(senderPsid) {
+  console.log('trying to get the profile for PSID: ' + senderPsid);
+
+  // The page access token we have generated in your app settings
+  const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
+
+  //instanciate FB Messenger Profile API request
+
+  const profile = axios.create({
+    baseURL: 'https://graph.facebook.com',
+    timeout: 20000,
+    headers: {
+      'Content-Type': 'application/json',
+      //Accept: 'application/json',
+    },
+    params: {
+      access_token: PAGE_ACCESS_TOKEN,
+      fields: 'first_name, last_name, profile_pic, gender',
+    },
+  });
+
+  try {
+    const response = await profile.get('/' + senderPsid);
+    console.log('got a profile response');
+    console.log(response.data);
+    return response.data;
+  } catch (err) {
+    console.log('Damn');
+    console.log(err);
+  }
 }
 
 // listen for requests :)

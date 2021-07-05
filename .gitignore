@@ -19,6 +19,7 @@ pids
 
 # Dependency directories
 node_modules/
+quick-start/node_modules
 
 # Optional npm cache directory
 .npm
@@ -32,3 +33,4 @@ node_modules/
 # dotenv environment variables file
 .env
 .env.test
+*.env
