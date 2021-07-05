@@ -20,6 +20,7 @@ pids
 # Dependency directories
 node_modules/
 quick-start/node_modules
+diabolomail/node_modules
 
 # Optional npm cache directory
 .npm
@@ -34,3 +35,5 @@ quick-start/node_modules
 .env
 .env.test
 *.env
+quick-start/.env
+diabolomail/.env
