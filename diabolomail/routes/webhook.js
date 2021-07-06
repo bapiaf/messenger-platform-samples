@@ -4,7 +4,6 @@ require('dotenv').config();
 // prepare router
 const express = require('express');
 const router = express.Router();
-const request = require('request');
 const axios = require('axios');
 
 // Adds support for GET requests to our webhook
@@ -98,7 +97,7 @@ async function handleMessage(senderPsid, receivedMessage) {
       inboundEmail = {
         from: `'${senderPsid}@facebook.com'`,
         body: receivedMessage.text,
-        subject: `FB Messenger from: `,
+        subject: 'FB Messenger from:',
         to: 'edmee.marazel+ux@diabolocom.com',
       };
       console.log(inboundEmail);
@@ -158,7 +157,7 @@ async function handleMessage(senderPsid, receivedMessage) {
     console.log(profile);
 
     // Forward to Diabolocom as inbound email
-    console.log('there is an email to send');
+    console.log('there is an email to send to Diabolocom');
     if (inboundEmail) {
       inboundEmail.body =
         inboundEmail.body +
@@ -169,21 +168,29 @@ async function handleMessage(senderPsid, receivedMessage) {
         ' ' +
         profile.profile_pic;
       inboundEmail.subject =
-        inboundEmail.subject + profile.first_name + ' ' + profile.last_name;
+        inboundEmail.subject +
+        ' ' +
+        profile.first_name +
+        ' ' +
+        profile.last_name;
       const sentInboundEmail = await sendInboundEmail(inboundEmail);
       console.log(sentInboundEmail);
     }
+
+    // Send the FB Messenger response message
+    console.log(
+      'there is a response to the message to make through the Send API'
+    );
+    const messengerResponse = await callSendAPI(senderPsid, response);
+    console.log(messengerResponse);
   } catch (err) {
     console.log('Couille in the potage');
     console.log(err);
   }
-
-  // Send the response message
-  callSendAPI(senderPsid, response);
 }
 
 // Handles messaging_postbacks events
-function handlePostback(senderPsid, receivedPostback) {
+async function handlePostback(senderPsid, receivedPostback) {
   let response;
 
   // Get the payload for the postback
@@ -195,12 +202,22 @@ function handlePostback(senderPsid, receivedPostback) {
   } else if (payload === 'no') {
     response = { text: 'Oops, try sending another image.' };
   }
-  // Send the message to acknowledge the postback
-  callSendAPI(senderPsid, response);
+
+  try {
+    // Send the FB Messenger response message
+    console.log(
+      'there is a response to the postback to make through the Send API'
+    );
+    const messengerResponse = await callSendAPI(senderPsid, response);
+    console.log(messengerResponse);
+  } catch (err) {
+    console.log('Couille in the potage');
+    console.log(err);
+  }
 }
 
 // Sends response messages via the FB Messenger Send API
-function callSendAPI(senderPsid, response) {
+async function callSendAPI(senderPsid, response) {
   // The page access token we have generated in your app settings
   const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
 
@@ -212,22 +229,28 @@ function callSendAPI(senderPsid, response) {
     message: response,
   };
 
-  // Send the HTTP request to the Messenger Platform
-  request(
-    {
-      uri: 'https://graph.facebook.com/v11.0/me/messages',
-      qs: { access_token: PAGE_ACCESS_TOKEN },
-      method: 'POST',
-      json: requestBody,
+  //instanciate FB Messenger Send API request
+  const sendMessage = axios.create({
+    baseURL: 'https://graph.facebook.com/v11.0/me/messages',
+    timeout: 20000,
+    headers: {
+      'Content-Type': 'application/json',
+      //Accept: 'application/json',
     },
-    (err, _res, _body) => {
-      if (!err) {
-        console.log('Message sent!');
-      } else {
-        console.error('Unable to send message:' + err);
-      }
-    }
-  );
+    params: {
+      access_token: PAGE_ACCESS_TOKEN,
+    },
+  });
+
+  try {
+    const response = await sendMessage.post('/', requestBody);
+    console.log('got a response from the FB Send API');
+    console.log(response.data);
+    return response.data;
+  } catch (err) {
+    console.log('Damn, issue with the FB Send API');
+    console.log(err);
+  }
 }
 
 // Send inbound email via the Diabolocom API
@@ -254,7 +277,7 @@ async function sendInboundEmail(inboundEmail) {
     console.log(response.data);
     return response.data;
   } catch (err) {
-    console.log('Damn');
+    console.log('Damn, issue with the Diabolocom inboundemail API');
     console.log(err);
   }
 }
@@ -287,7 +310,7 @@ async function getUserProfile(senderPsid) {
     console.log(response.data);
     return response.data;
   } catch (err) {
-    console.log('Damn');
+    console.log('Damn, issur with the FB Profile API');
     console.log(err);
   }
 }

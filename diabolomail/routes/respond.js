@@ -4,7 +4,6 @@ require('dotenv').config();
 // prepare router
 const express = require('express');
 const router = express.Router();
-const request = require('request');
 const axios = require('axios');
 
 // route POST /respond
