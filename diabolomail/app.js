@@ -27,7 +27,7 @@ app.get('/', function (_req, res) {
 
 // Define Routes
 app.use('/webhook', require('./routes/webhook'));
-//app.use('/respond', require ('./routes/respond'));
+app.use('/respond', require('./routes/respond'));
 
 // listen for requests :)
 var listener = app.listen(process.env.PORT, function () {
