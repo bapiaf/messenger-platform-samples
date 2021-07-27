@@ -95,7 +95,7 @@ async function handleMessage(senderPsid, receivedMessage) {
       console.log(response);
 
       inboundEmail = {
-        from: `'${senderPsid}@facebook.com'`,
+        from: `${senderPsid}@facebook.com`,
         body: receivedMessage.text,
         subject: 'FB Messenger from:',
         to: 'edmee.marazel+ux@diabolocom.com',
